@@ -1,3 +1,18 @@
+from langgraph.graph import StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+from typing import TypedDict, Optional, List, Dict
+import google.generativeai as genai
+import os
+import json
+import re
+from prompts import (
+    profile_analysis_prompt,
+    job_fit_prompt,
+    content_enhancement_prompt,
+    skill_gap_prompt,
+)
+from scraper import scrape_profile
+
 class AgentState(TypedDict):
     """Typed dictionary representing the state passed between agents in the workflow."""
     profile_url: str
