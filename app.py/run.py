@@ -13,7 +13,7 @@ def main():
     """
     # Load environment variables from a .env file located in the same directory as this script
     load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
-    required_vars = ['HUGGING_FACE_API_KEY', 'APIFY_API_TOKEN']
+    required_vars = ['GEMINI_API_KEY', 'APIFY_API_TOKEN']
     # Identify any missing required environment variables
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     if missing_vars:
