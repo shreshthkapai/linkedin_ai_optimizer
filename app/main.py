@@ -18,7 +18,7 @@ except Exception:
     from dotenv import load_dotenv
     load_dotenv()
 
-# Initialize session state
+# Initialize session state variables for persistent UI state
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "chat_handler" not in st.session_state:
@@ -29,10 +29,17 @@ if "profile_url" not in st.session_state:
     st.session_state.profile_url = ""
 
 def main():
+    """
+    Main Streamlit application for LinkedIn profile analysis.
+    
+    Provides a chat interface where users can input their LinkedIn profile
+    and ask questions about career optimization, job fit, and profile improvement.
+    Uses a multi-agent system to provide specialized advice based on query intent.
+    """
     st.title("🚀 LearnTube - LinkedIn Profile Optimizer")
     st.markdown("*by CareerNinja*")
     
-    # LinkedIn URL input
+    # LinkedIn URL input section with load button
     col1, col2 = st.columns([3, 1])
     with col1:
         profile_url = st.text_input(
@@ -41,32 +48,33 @@ def main():
             placeholder="https://www.linkedin.com/in/your-profile"
         )
     with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Align button
+        st.markdown("<br>", unsafe_allow_html=True)  # Visual alignment
         if st.button("Load Profile", type="primary"):
             if profile_url:
                 st.session_state.profile_url = profile_url
-                st.session_state.messages = []  # Clear chat on new profile
+                st.session_state.messages = []  # Reset chat history for new profile
                 st.success("Profile loaded! Start chatting below.")
                 st.rerun()
     
-    # Chat interface
+    # Main chat interface - only show if profile is loaded
     if st.session_state.profile_url:
         st.markdown("---")
-        # Display chat messages
+        
+        # Display conversation history
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
-        # Chat input
+        # Chat input handling
         if prompt := st.chat_input("Ask about your profile, job fit, career guidance..."):
-            # Add user message
+            # Add user message to history
             st.session_state.messages.append({"role": "user", "content": prompt})
             
-            # Display user message
+            # Display user message immediately
             with st.chat_message("user"):
                 st.markdown(prompt)
             
-            # Generate response
+            # Generate and display AI response
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing your profile..."):
                     response = st.session_state.chat_handler.handle_chat(
@@ -83,6 +91,7 @@ def main():
                         st.markdown(error_msg)
                         st.session_state.messages.append({"role": "assistant", "content": error_msg})
     else:
+        # Welcome screen with usage instructions
         st.info("👆 Enter your LinkedIn profile URL above to start chatting with the AI assistant.")
         
         st.markdown("### 💡 Example Questions:")
