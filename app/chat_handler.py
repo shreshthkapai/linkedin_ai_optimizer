@@ -1,4 +1,3 @@
-# chat_handler.py
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from agents import (
@@ -13,14 +12,34 @@ from agents import (
 
 
 class ChatHandler:
+    """
+    Main orchestrator for the LinkedIn profile analysis chat system.
+    
+    Manages the agent workflow graph, session state, and handles
+    user interactions with the multi-agent system. Maintains conversation
+    context and profile data across multiple queries within a session.
+    """
+    
     def __init__(self):
+        """Initialize the chat handler with workflow and memory management."""
         self.memory = MemorySaver()
         self.workflow = self._build_workflow()
-        self.session_data = {}  # Store session-specific data
+        self.session_data = {}  # In-memory session storage for profile data and chat history
 
     def _build_workflow(self):
+        """
+        Construct the LangGraph workflow that orchestrates all agents.
+        
+        Creates a directed graph where queries flow from scraping through
+        routing to specialized agents, with conditional edges based on
+        user intent classification.
+        
+        Returns:
+            Compiled workflow graph with checkpointing enabled
+        """
         workflow = StateGraph(AgentState)
 
+        # Add all agent nodes to the workflow
         workflow.add_node("scrape", scrape_agent)
         workflow.add_node("route", route_agent)
         workflow.add_node("profile_analysis", profile_analysis_agent)
@@ -28,9 +47,11 @@ class ChatHandler:
         workflow.add_node("content_enhancement", content_enhancement_agent)
         workflow.add_node("skill_gap", skill_gap_agent)
 
+        # Define workflow flow: always start with scraping, then route to appropriate agent
         workflow.set_entry_point("scrape")
         workflow.add_edge("scrape", "route")
         
+        # Conditional routing based on query analysis
         workflow.add_conditional_edges(
             "route",
             lambda state: state.get("next_node", "profile_analysis"),
@@ -42,6 +63,7 @@ class ChatHandler:
             }
         )
 
+        # All specialized agents end the workflow
         workflow.add_edge("profile_analysis", END)
         workflow.add_edge("job_fit", END)
         workflow.add_edge("content_enhancement", END)
@@ -50,7 +72,23 @@ class ChatHandler:
         return workflow.compile(checkpointer=self.memory)
 
     def handle_chat(self, profile_url: str, user_query: str, session_id: str):
+        """
+        Process a user query through the agent workflow system.
+        
+        Manages session state, invokes the appropriate workflow path,
+        and returns a cleaned response to the user. Handles error cases
+        gracefully with informative error messages.
+        
+        Args:
+            profile_url: LinkedIn profile URL to analyze
+            user_query: User's natural language question
+            session_id: Unique session identifier for state management
+            
+        Returns:
+            Processed response string from the appropriate agent
+        """
         try:
+            # Initialize session data if new session
             if session_id not in self.session_data:
                 self.session_data[session_id] = {
                     "profile_data": None,
@@ -59,11 +97,12 @@ class ChatHandler:
 
             session_info = self.session_data[session_id]
 
+            # Prepare state for workflow execution
             state = {
                 "profile_url": profile_url,
                 "profile_data": session_info.get("profile_data"),
                 "user_query": user_query,
-                "job_role": self._extract_job_role(user_query),
+                "job_role": self._extract_job_role(user_query),  # Extract mentioned job roles
                 "analysis_result": None,
                 "session_id": session_id,
                 "chat_history": session_info.get("chat_history", []),
@@ -75,6 +114,7 @@ class ChatHandler:
             print(f"Processing query: {user_query[:50]}...")
             result = self.workflow.invoke(state, config=config)
 
+            # Update session data with workflow results
             if isinstance(result, dict):
                 if result.get("profile_data"):
                     self.session_data[session_id]["profile_data"] = result["profile_data"]
@@ -96,6 +136,18 @@ class ChatHandler:
             )
 
     def _extract_job_role(self, user_query: str) -> str:
+        """
+        Extract mentioned job roles from user queries using pattern matching.
+        
+        Helps contextualize responses by identifying specific roles the user
+        is interested in, enabling more targeted career advice.
+        
+        Args:
+            user_query: User's natural language input
+            
+        Returns:
+            Extracted job role title or empty string if none found
+        """
         query_lower = user_query.lower()
         job_patterns = [
             "data scientist", "software engineer", "product manager", "marketing manager",
@@ -109,28 +161,33 @@ class ChatHandler:
     
     def _clean_response(self, response: str) -> str:
         """
-        Clean and format the agent's response for user output.
-        Strips whitespace, removes empty lines, and handles short or error responses.
-
+        Clean and format agent responses for optimal user experience.
+        
+        Removes empty lines, ensures minimum response quality, and provides
+        fallback messages for inadequate responses. Maintains professional
+        formatting while being user-friendly.
+        
         Args:
-            response (str): The raw response from the agent workflow.
-
+            response: Raw response from the agent workflow
+            
         Returns:
-            str: A user-friendly, cleaned response.
+            Cleaned, user-ready response string
         """
         if not isinstance(response, str):
             response = str(response)
 
+        # Remove empty lines and clean whitespace
         lines = [line.strip() for line in response.split('\n') if line.strip()]
 
         cleaned_lines = []
         for line in lines:
-            # Only keep non-trivial lines
+            # Only keep substantive lines (filter out formatting artifacts)
             if len(line) > 3 and not line.replace('.', '').replace('*', '').strip() == '':
                 cleaned_lines.append(line)
 
         result = '\n\n'.join(cleaned_lines) if cleaned_lines else response
 
+        # Quality check: ensure response is substantial and helpful
         if len(result.strip()) < 50 or "error" in result.lower():
             return (
                 "I couldn't generate a detailed response. Please try rephrasing your question "
@@ -140,5 +197,11 @@ class ChatHandler:
         return result.strip()
 
 def clear_session(self, session_id: str):
+    """
+    Clean up session data to prevent memory leaks.
+    
+    Args:
+        session_id: Session identifier to clear
+    """
     if session_id in self.session_data:
         del self.session_data[session_id]
