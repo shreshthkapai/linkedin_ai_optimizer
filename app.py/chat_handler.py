@@ -1,4 +1,3 @@
-# chat_handler.py
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from agents import (
@@ -13,14 +12,26 @@ from agents import (
 
 
 class ChatHandler:
+    """
+    Handles chat-driven workflows for LinkedIn profile analysis,
+    agent orchestration, and session management.
+    """
+
     def __init__(self):
+        """Initialize memory, workflow, and session data storage."""
         self.memory = MemorySaver()
         self.workflow = self._build_workflow()
-        self.session_data = {}  # Store session-specific data
+        self.session_data = {}  # Store data per chat session
 
     def _build_workflow(self):
+        """
+        Construct the workflow graph connecting various agents for
+        profile scraping, analysis, and routing.
+        Returns a compiled workflow.
+        """
         workflow = StateGraph(AgentState)
 
+        # Add workflow nodes for each agent
         workflow.add_node("scrape", scrape_agent)
         workflow.add_node("route", route_agent)
         workflow.add_node("profile_analysis", profile_analysis_agent)
@@ -31,6 +42,7 @@ class ChatHandler:
         workflow.set_entry_point("scrape")
         workflow.add_edge("scrape", "route")
         
+        # Dynamically route to the next node based on state
         workflow.add_conditional_edges(
             "route",
             lambda state: state.get("next_node", "profile_analysis"),
@@ -42,6 +54,7 @@ class ChatHandler:
             }
         )
 
+        # All analysis nodes end the workflow
         workflow.add_edge("profile_analysis", END)
         workflow.add_edge("job_fit", END)
         workflow.add_edge("content_enhancement", END)
@@ -50,7 +63,19 @@ class ChatHandler:
         return workflow.compile(checkpointer=self.memory)
 
     def handle_chat(self, profile_url: str, user_query: str, session_id: str):
+        """
+        Manage a chat session, invoking the workflow and tracking session state.
+
+        Args:
+            profile_url (str): LinkedIn profile URL.
+            user_query (str): The user's question or request.
+            session_id (str): Unique identifier for chat session.
+
+        Returns:
+            str: The cleaned, user-facing response.
+        """
         try:
+            # Initialize session if it doesn't exist
             if session_id not in self.session_data:
                 self.session_data[session_id] = {
                     "profile_data": None,
@@ -59,6 +84,7 @@ class ChatHandler:
 
             session_info = self.session_data[session_id]
 
+            # Build workflow state
             state = {
                 "profile_url": profile_url,
                 "profile_data": session_info.get("profile_data"),
@@ -76,6 +102,7 @@ class ChatHandler:
             result = self.workflow.invoke(state, config=config)
 
             if isinstance(result, dict):
+                # Persist returned profile data and chat history
                 if result.get("profile_data"):
                     self.session_data[session_id]["profile_data"] = result["profile_data"]
                 if result.get("chat_history"):
@@ -96,6 +123,16 @@ class ChatHandler:
             )
 
     def _extract_job_role(self, user_query: str) -> str:
+        """
+        Attempt to extract a job role from the user's query.
+        Used to better tailor analysis.
+
+        Args:
+            user_query (str): The user's input.
+
+        Returns:
+            str: Extracted job role, if found; otherwise empty string.
+        """
         query_lower = user_query.lower()
         job_patterns = [
             "data scientist", "software engineer", "product manager", "marketing manager",
@@ -131,6 +168,7 @@ class ChatHandler:
 
         result = '\n\n'.join(cleaned_lines) if cleaned_lines else response
 
+        # If response seems too short or likely to be an error, return a fallback message
         if len(result.strip()) < 50 or "error" in result.lower():
             return (
                 "I couldn't generate a detailed response. Please try rephrasing your question "
@@ -139,6 +177,12 @@ class ChatHandler:
 
         return result.strip()
 
-def clear_session(self, session_id: str):
-    if session_id in self.session_data:
-        del self.session_data[session_id]
+    def clear_session(self, session_id: str):
+        """
+        Remove all data associated with a specific chat session.
+
+        Args:
+            session_id (str): The session to clear.
+        """
+        if session_id in self.session_data:
+            del self.session_data[session_id]
