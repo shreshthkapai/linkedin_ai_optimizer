@@ -11,13 +11,13 @@ An AI-powered chat system that helps users optimize their LinkedIn profiles, ana
 7) Session Management: Context retention across chat sessions using LangGraph checkpointers.
 
 ## 🌐 Live Demo
-Try it live: https://linkedinprofileoptimizer.streamlit.app/
+Try it live: https://linkedinaioptimizer-c3l9qgsowlfphztd7f6wyd.streamlit.app/
 
 ## 🚀 Quick Start
 ### Prerequisites
 1) Python 3.11+
 2) Apify API token (free tier available)
-3) HuggingFace API key (free)
+3) Gemma API key (free)
 
 ### Installation
 1) Clone the repository
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 3) Set up environment variables- Create app/.env file
 ```sh
 APIFY_API_TOKEN=your_apify_token_here
-HUGGING_FACE_API_KEY=your_huggingface_token_here
+GEMINI_FACE_API_KEY=your_gemini_token_here
 LI_AT_COOKIE=your_linkedin_cookie_here (optional)
 ```
 4) Run the application
@@ -60,19 +60,19 @@ Get AI Insights: Receive personalized recommendations and actionable feedback
 1) Multi-Agent System: LangGraph-powered agents for specialized tasks (analysis, content generation, job matching)
 2) Memory Management: Session-based context retention for personalized conversations
 3) Profile Scraping: Apify integration for LinkedIn data extraction
-4) AI Processing: HuggingFace Mistral-7B model for intelligent responses
+4) AI Processing: Gemini-1.5 Flash model for intelligent responses
 
 ## For Streamlit Cloud Deployment
 Set secrets in .streamlit/secrets.toml:
 ```sh
 APIFY_API_TOKEN = "your_token"
-HUGGING_FACE_API_KEY = "your_token"
+GEMINI_FACE_API_KEY = "your_token"
 LI_AT_COOKIE = "your_cookie"
 ```
 
 ## Environment Variables
 1) APIFY_API_TOKEN: Required for LinkedIn profile scraping
-2) HUGGING_FACE_API_KEY: Required for AI model access
+2) GEMINI_API_KEY: Required for AI model access
 3) LI_AT_COOKIE: Optional, improves scraping reliability
 
 ## 📁 Project Structure
@@ -87,9 +87,9 @@ app/
 ```
 ## 🛠️ Tech Stack
 1) Frontend: Streamlit
-2) AI Framework: LangGraph, HuggingFace Transformers
+2) AI Framework: LangGraph, Gemini API
 3) Data Scraping: Apify LinkedIn Scraper
-4) AI Model: Mistral-7B-Instruct
+4) AI Model: Gemini-1.5-flash
 5) Memory: LangGraph MemorySaver
 
 ## 📋 Requirements
@@ -97,10 +97,10 @@ See requirements.txt for the complete dependency list. Key packages:
 1) streamlit
 2) langgraph
 3) apify-client
-4) huggingface_hub
+4) Gemini API
 5) python-dotenv
 
 ## 🔗 APIs Used
 1) Apify LinkedIn Scraper: Profile data extraction
-2) HuggingFace Inference API: AI model hosting and inference
+2) GEMINI API: AI model hosting and inference
    
