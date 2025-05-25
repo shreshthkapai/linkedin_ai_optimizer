@@ -9,3 +9,4 @@ python-dotenv
 transformers
 huggingface_hub
 accelerate
+google-generativeai
