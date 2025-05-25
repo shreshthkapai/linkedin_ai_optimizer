@@ -1,0 +1,11 @@
+streamlit==1.38.0
+langgraph==0.2.14
+apify-client==1.8.0
+python-dotenv==1.0.1
+pytest==8.3.3
+langgraph
+apify-client
+python-dotenv
+transformers
+huggingface_hub
+accelerate

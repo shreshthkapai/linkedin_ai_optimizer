@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+*.ipynb
+*.log
+venv/
+*.DS_Store
+<<<<<<< HEAD
+.streamlit/secrets.toml
+=======
+>>>>>>> 01f941124558e631452cbb8baf34798015298bfc
