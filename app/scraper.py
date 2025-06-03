@@ -3,11 +3,11 @@ import re
 from apify_client import ApifyClient
 from typing import Dict, Optional, Any
 
-# Try to load secrets from Streamlit if available
+# Load secrets safely (Streamlit Cloud or local .env fallback)
 try:
     import streamlit as st
-    APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN") or st.secrets.get("APIFY_API_TOKEN")
-    LI_AT_COOKIE = os.getenv("LI_AT_COOKIE") or st.secrets.get("LI_AT_COOKIE")
+    APIFY_API_TOKEN = st.secrets["APIFY_API_TOKEN"]
+    LI_AT_COOKIE = st.secrets["LI_AT_COOKIE"]
 except Exception:
     from dotenv import load_dotenv
     load_dotenv()
@@ -18,8 +18,10 @@ except Exception:
 def scrape_profile(profile_url: str) -> Optional[Dict[str, Any]]:
     """Scrape raw LinkedIn profile data using Apify and validate critical fields."""
     try:
+        print("⚡️ scrape_profile() called with:", profile_url)
+
         if not APIFY_API_TOKEN:
-            raise ValueError("APIFY_API_TOKEN not found in environment or secrets")
+            raise ValueError("APIFY_API_TOKEN is missing!")
 
         run_input = {
             "url": profile_url,
@@ -27,31 +29,35 @@ def scrape_profile(profile_url: str) -> Optional[Dict[str, Any]]:
         }
 
         client = ApifyClient(APIFY_API_TOKEN)
-        print(f"Running actor with input: {run_input}")
+        print(f"🚀 Running Apify actor with input: {run_input}")
         run = client.actor("pratikdani/linkedin-people-profile-scraper").call(run_input=run_input)
-        print(f"Run status: {run['status']}")
-        print(f"💾 Check your data here: https://console.apify.com/storage/datasets/{run['defaultDatasetId']}")
+
+        if "defaultDatasetId" not in run:
+            raise RuntimeError("Apify run did not return a dataset ID!")
+
+        print(f"✅ Apify run status: {run['status']}")
+        print(f"📊 View dataset: https://console.apify.com/storage/datasets/{run['defaultDatasetId']}")
 
         dataset_id = run["defaultDatasetId"]
         for item in client.dataset(dataset_id).iterate_items():
             profile_data = dict(item)
-            profile_data = _validate_profile_data(profile_data)
-            print("✅ Scraped profile data:", profile_data)  # Debug log
-            return profile_data
+            validated = _validate_profile_data(profile_data)
+            print("✅ Scraped profile data (preview):", {k: validated.get(k) for k in ["name", "headline", "skills"]})
+            return validated
 
-        print("No data returned from dataset")
+        print("⚠️ No items returned from Apify dataset.")
         return None
 
     except Exception as e:
-        print(f"❌ Error scraping profile: {e}")
+        print(f"❌ Error during scraping: {e}")
         return None
 
 
 def _validate_profile_data(profile_data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and clean scraped profile data to ensure critical fields are present."""
     cleaned_data = profile_data.copy()
-
     required_fields = ['name', 'about', 'experience', 'education', 'skills']
+
     for field in required_fields:
         if field not in cleaned_data or not cleaned_data[field]:
             cleaned_data[field] = [] if field in ['experience', 'education', 'skills'] else ""
