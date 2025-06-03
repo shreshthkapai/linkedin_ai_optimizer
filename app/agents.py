@@ -6,6 +6,7 @@ import os
 import json
 import re
 from datetime import datetime
+import streamlit as st
 import time
 from prompts import (
     profile_analysis_prompt,
@@ -327,7 +328,7 @@ def call_llm_api(messages: List[Dict[str, str]], max_retries: int = 3, initial_d
     Returns:
         Generated response text from the model
     """
-    api_key = os.getenv('GEMINI_API_KEY')
+    api_key = st.secrets.get('GEMINI_API_KEY')
     if not api_key:
         raise ValueError("GEMINI_API_KEY not configured.")
 
