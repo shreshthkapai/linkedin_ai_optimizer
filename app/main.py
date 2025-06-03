@@ -8,15 +8,47 @@ import os
 from chat_handler import ChatHandler
 
 # Set environment variables from Streamlit secrets (for cloud) or .env (for local)
-try:
-    if hasattr(st, 'secrets') and st.secrets:
-        os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', os.getenv('GEMINI_API_KEY', ''))
-        os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', os.getenv('APIFY_API_TOKEN', ''))
-        os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', os.getenv('LI_AT_COOKIE', ''))
-except Exception:
-    # Fallback to environment variables (local development)
-    from dotenv import load_dotenv
-    load_dotenv()
+def setup_environment():
+    """Setup environment variables with proper error handling"""
+    try:
+        # Check if we're in Streamlit Cloud (has secrets)
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            print("Loading from Streamlit secrets...")
+            os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', '')
+            os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', '')
+            os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', '')
+            
+            # Verify critical keys are loaded
+            gemini_key = os.environ.get('GEMINI_API_KEY', '')
+            apify_token = os.environ.get('APIFY_API_TOKEN', '')
+            
+            if not gemini_key or not apify_token:
+                st.error(f"❌ Missing API keys in Streamlit secrets!")
+                st.error(f"GEMINI_API_KEY: {'✅ Set' if gemini_key else '❌ Missing'}")
+                st.error(f"APIFY_API_TOKEN: {'✅ Set' if apify_token else '❌ Missing'}")
+                st.stop()
+            else:
+                st.success("✅ API keys loaded successfully from Streamlit secrets")
+                
+        else:
+            print("Loading from .env file...")
+            # Fallback to environment variables (local development)
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            gemini_key = os.getenv('GEMINI_API_KEY', '')
+            apify_token = os.getenv('APIFY_API_TOKEN', '')
+            
+            if not gemini_key or not apify_token:
+                st.error("❌ Missing API keys in .env file!")
+                st.stop()
+                
+    except Exception as e:
+        st.error(f"❌ Environment setup error: {str(e)}")
+        st.stop()
+
+# Setup environment first
+setup_environment()
 
 # Initialize session state variables for persistent UI state
 if "session_id" not in st.session_state:
@@ -38,6 +70,13 @@ def main():
     """
     st.title("🚀 LearnTube - LinkedIn Profile Optimizer")
     st.markdown("*by CareerNinja*")
+    
+    # Debug section (remove in production)
+    with st.expander("🔧 Debug Info"):
+        st.write("Environment Variables Status:")
+        st.write(f"GEMINI_API_KEY: {'✅ Set' if os.getenv('GEMINI_API_KEY') else '❌ Missing'}")
+        st.write(f"APIFY_API_TOKEN: {'✅ Set' if os.getenv('APIFY_API_TOKEN') else '❌ Missing'}")
+        st.write(f"Session ID: {st.session_state.session_id}")
     
     # LinkedIn URL input section with load button
     col1, col2 = st.columns([3, 1])
@@ -77,18 +116,24 @@ def main():
             # Generate and display AI response
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing your profile..."):
-                    response = st.session_state.chat_handler.handle_chat(
-                        profile_url=st.session_state.profile_url,
-                        user_query=prompt,
-                        session_id=st.session_state.session_id
-                    )
-                    
-                    if response:
-                        st.markdown(response)
-                        st.session_state.messages.append({"role": "assistant", "content": response})
-                    else:
-                        error_msg = "⚠️ Unable to process request. Please try again or check your LinkedIn URL."
-                        st.markdown(error_msg)
+                    try:
+                        response = st.session_state.chat_handler.handle_chat(
+                            profile_url=st.session_state.profile_url,
+                            user_query=prompt,
+                            session_id=st.session_state.session_id
+                        )
+                        
+                        if response and len(response.strip()) > 20:
+                            st.markdown(response)
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        else:
+                            error_msg = "⚠️ Unable to generate a proper response. Please try again or check if your profile has sufficient information."
+                            st.markdown(error_msg)
+                            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                            
+                    except Exception as e:
+                        error_msg = f"❌ Error processing request: {str(e)}"
+                        st.error(error_msg)
                         st.session_state.messages.append({"role": "assistant", "content": error_msg})
     else:
         # Welcome screen with usage instructions
