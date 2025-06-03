@@ -5,92 +5,24 @@ st.set_page_config(page_title="LearnTube", page_icon="💼", layout="wide")
 
 import uuid
 import os
+from chat_handler import ChatHandler
 
-# Enhanced environment variable loading for Streamlit Cloud
-def load_environment_variables():
-    """
-    Load environment variables from Streamlit secrets (cloud) or .env file (local).
-    Returns True if all required variables are loaded successfully.
-    """
-    required_vars = ['GEMINI_API_KEY', 'APIFY_API_TOKEN']
-    loaded_vars = {}
-    
-    # Try to load from Streamlit secrets first (for cloud deployment)
-    try:
-        if hasattr(st, 'secrets') and len(st.secrets) > 0:
-            st.write("🔧 Loading from Streamlit secrets...")  # Debug info
-            for var in required_vars:
-                if var in st.secrets:
-                    os.environ[var] = st.secrets[var]
-                    loaded_vars[var] = "✅ Loaded from secrets"
-                else:
-                    loaded_vars[var] = "❌ Missing from secrets"
-            
-            # Also load optional variables
-            optional_vars = ['LI_AT_COOKIE', 'HUGGING_FACE_API_KEY']
-            for var in optional_vars:
-                if var in st.secrets:
-                    os.environ[var] = st.secrets[var]
-                    
-        else:
-            st.write("📁 Secrets not found, trying .env file...")  # Debug info
-            # Fallback to .env file for local development
-            from dotenv import load_dotenv
-            load_dotenv()
-            
-            for var in required_vars:
-                if os.getenv(var):
-                    loaded_vars[var] = "✅ Loaded from .env"
-                else:
-                    loaded_vars[var] = "❌ Missing from .env"
-                    
-    except Exception as e:
-        st.error(f"Error loading environment variables: {str(e)}")
-        return False, loaded_vars
-    
-    # Check if all required variables are set
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    success = len(missing_vars) == 0
-    
-    return success, loaded_vars
-
-# Load environment variables and check status
-env_success, env_status = load_environment_variables()
-
-# Show environment status in sidebar for debugging
-with st.sidebar:
-    st.subheader("🔧 Environment Status")
-    for var, status in env_status.items():
-        st.write(f"{var}: {status}")
-    
-    if not env_success:
-        st.error("⚠️ Some required environment variables are missing!")
-        st.write("Required variables:")
-        st.write("- GEMINI_API_KEY")
-        st.write("- APIFY_API_TOKEN")
-
-# Only import chat_handler after environment variables are set
-if env_success:
-    try:
-        from chat_handler import ChatHandler
-        chat_handler_available = True
-    except ImportError as e:
-        st.error(f"Failed to import ChatHandler: {str(e)}")
-        chat_handler_available = False
-else:
-    chat_handler_available = False
+# Set environment variables from Streamlit secrets (for cloud) or .env (for local)
+try:
+    if hasattr(st, 'secrets') and st.secrets:
+        os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', os.getenv('GEMINI_API_KEY', ''))
+        os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', os.getenv('APIFY_API_TOKEN', ''))
+        os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', os.getenv('LI_AT_COOKIE', ''))
+except Exception:
+    # Fallback to environment variables (local development)
+    from dotenv import load_dotenv
+    load_dotenv()
 
 # Initialize session state variables for persistent UI state
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
-
-if "chat_handler" not in st.session_state and chat_handler_available:
-    try:
-        st.session_state.chat_handler = ChatHandler()
-    except Exception as e:
-        st.error(f"Failed to initialize ChatHandler: {str(e)}")
-        chat_handler_available = False
-
+if "chat_handler" not in st.session_state:
+    st.session_state.chat_handler = ChatHandler()
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "profile_url" not in st.session_state:
@@ -106,11 +38,6 @@ def main():
     """
     st.title("🚀 LearnTube - LinkedIn Profile Optimizer")
     st.markdown("*by CareerNinja*")
-    
-    # Show warning if environment is not properly configured
-    if not env_success or not chat_handler_available:
-        st.error("⚠️ Application is not properly configured. Please check the sidebar for details.")
-        return
     
     # LinkedIn URL input section with load button
     col1, col2 = st.columns([3, 1])
@@ -150,30 +77,18 @@ def main():
             # Generate and display AI response
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing your profile..."):
-                    try:
-                        # Add debugging information
-                        st.write("🔍 Debug Info:")
-                        st.write(f"- Profile URL: {st.session_state.profile_url[:50]}...")
-                        st.write(f"- Session ID: {st.session_state.session_id}")
-                        st.write(f"- API Keys available: {bool(os.getenv('GEMINI_API_KEY')) and bool(os.getenv('APIFY_API_TOKEN'))}")
-                        
-                        response = st.session_state.chat_handler.handle_chat(
-                            profile_url=st.session_state.profile_url,
-                            user_query=prompt,
-                            session_id=st.session_state.session_id
-                        )
-                        
-                        if response:
-                            st.markdown(response)
-                            st.session_state.messages.append({"role": "assistant", "content": response})
-                        else:
-                            error_msg = "⚠️ Unable to process request. Please try again or check your LinkedIn URL."
-                            st.markdown(error_msg)
-                            st.session_state.messages.append({"role": "assistant", "content": error_msg})
-                            
-                    except Exception as e:
-                        error_msg = f"❌ Error processing request: {str(e)}"
-                        st.error(error_msg)
+                    response = st.session_state.chat_handler.handle_chat(
+                        profile_url=st.session_state.profile_url,
+                        user_query=prompt,
+                        session_id=st.session_state.session_id
+                    )
+                    
+                    if response:
+                        st.markdown(response)
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                    else:
+                        error_msg = "⚠️ Unable to process request. Please try again or check your LinkedIn URL."
+                        st.markdown(error_msg)
                         st.session_state.messages.append({"role": "assistant", "content": error_msg})
     else:
         # Welcome screen with usage instructions
