@@ -9,10 +9,11 @@ from chat_handler import ChatHandler
 
 # Set environment variables from Streamlit secrets (for cloud) or .env (for local)
 try:
-    if hasattr(st, 'secrets') and st.secrets:
-        os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', os.getenv('GEMINI_API_KEY', ''))
-        os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', os.getenv('APIFY_API_TOKEN', ''))
-        os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', os.getenv('LI_AT_COOKIE', ''))
+   if hasattr(st, 'secrets') and st.secrets:
+    os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', '')
+    os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', '')
+    os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', '')
+       
 except Exception:
     # Fallback to environment variables (local development)
     from dotenv import load_dotenv
