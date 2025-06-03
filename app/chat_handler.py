@@ -2,6 +2,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from agents import (
     AgentState,
+    UnifiedContext,
+    create_unified_context,
     scrape_agent,
     profile_analysis_agent,
     job_fit_agent,
@@ -24,7 +26,7 @@ class ChatHandler:
         """Initialize the chat handler with workflow and memory management."""
         self.memory = MemorySaver()
         self.workflow = self._build_workflow()
-        self.session_data = {}  # In-memory session storage for profile data and chat history
+        self.unified_contexts = {}  # Session-based unified contexts
 
     def _build_workflow(self):
         """
@@ -88,24 +90,20 @@ class ChatHandler:
             Processed response string from the appropriate agent
         """
         try:
-            # Initialize session data if new session
-            if session_id not in self.session_data:
-                self.session_data[session_id] = {
-                    "profile_data": None,
-                    "chat_history": []
-                }
+            # Initialize unified context if new session
+            if session_id not in self.unified_contexts:
+                self.unified_contexts[session_id] = create_unified_context()
 
-            session_info = self.session_data[session_id]
+            unified_context = self.unified_contexts[session_id]
 
             # Prepare state for workflow execution
             state = {
                 "profile_url": profile_url,
-                "profile_data": session_info.get("profile_data"),
+                "unified_context": unified_context,
                 "user_query": user_query,
                 "job_role": self._extract_job_role(user_query),  # Extract mentioned job roles
                 "analysis_result": None,
                 "session_id": session_id,
-                "chat_history": session_info.get("chat_history", []),
                 "next_node": None
             }
 
@@ -114,12 +112,9 @@ class ChatHandler:
             print(f"Processing query: {user_query[:50]}...")
             result = self.workflow.invoke(state, config=config)
 
-            # Update session data with workflow results
-            if isinstance(result, dict):
-                if result.get("profile_data"):
-                    self.session_data[session_id]["profile_data"] = result["profile_data"]
-                if result.get("chat_history"):
-                    self.session_data[session_id]["chat_history"] = result["chat_history"]
+            # Update unified context with workflow results
+            if isinstance(result, dict) and result.get("unified_context"):
+                self.unified_contexts[session_id] = result["unified_context"]
 
                 response = result.get("analysis_result", "No response generated")
             else:
@@ -196,12 +191,12 @@ class ChatHandler:
 
         return result.strip()
 
-def clear_session(self, session_id: str):
-    """
-    Clean up session data to prevent memory leaks.
-    
-    Args:
-        session_id: Session identifier to clear
-    """
-    if session_id in self.session_data:
-        del self.session_data[session_id]
+    def clear_session(self, session_id: str):
+        """
+        Clean up session data to prevent memory leaks.
+        
+        Args:
+            session_id: Session identifier to clear
+        """
+        if session_id in self.unified_contexts:
+            del self.unified_contexts[session_id]
