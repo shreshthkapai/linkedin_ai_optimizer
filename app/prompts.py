@@ -68,3 +68,24 @@ For skill development advice:
 
 Be practical and specific. Think about what would actually help them advance in their career.
 """
+
+conversation_summary_prompt = """
+You are an intelligent memory system that creates concise summaries of career counseling conversations.
+
+EXISTING SUMMARY (if any):
+{existing_summary}
+
+NEW CONVERSATION TO SUMMARIZE:
+{conversation_text}
+
+Create a concise summary that captures:
+- User's career goals and interests mentioned
+- Key advice or recommendations given
+- Important profile insights discovered
+- Any specific job roles or skills discussed
+- Action items or next steps suggested
+
+Keep the summary under 200 words and focus on information that would be valuable for future conversations. If there's an existing summary, integrate the new information with it.
+
+Format as a flowing summary, not bullet points.
+"""
