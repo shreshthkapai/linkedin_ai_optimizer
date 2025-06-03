@@ -81,6 +81,9 @@ def _extract_key_insights(profile_data: dict) -> List[str]:
     """
     insights = []
     
+    if profile_data.get("name"):
+        insights.append(f"Name: {profile_data['name']}")
+    
     if profile_data.get("headline"):
         insights.append(f"Current role: {profile_data['headline']}")
     
@@ -95,6 +98,10 @@ def _extract_key_insights(profile_data: dict) -> List[str]:
     if profile_data.get("skills"):
         skills_count = len(profile_data["skills"]) if isinstance(profile_data["skills"], list) else 0
         insights.append(f"Listed skills: {skills_count} total")
+    
+    if profile_data.get("summary"):
+        summary_preview = profile_data["summary"][:100] + "..." if len(profile_data["summary"]) > 100 else profile_data["summary"]
+        insights.append(f"Profile summary starts with: {summary_preview}")
     
     return insights
 
@@ -225,7 +232,15 @@ def scrape_agent(state: AgentState) -> AgentState:
     if not state["unified_context"]["profile_data"]:
         profile_data = scrape_profile(state["profile_url"])
         if profile_data:
-            state["unified_context"] = create_unified_context(profile_data, state["unified_context"]["chat_history"])
+            # Create new unified context with profile data while preserving chat history
+            existing_chat_history = state["unified_context"]["chat_history"]
+            existing_summary = state["unified_context"]["conversation_summary"]
+            
+            new_context = create_unified_context(profile_data, existing_chat_history)
+            new_context["conversation_summary"] = existing_summary
+            
+            state["unified_context"] = new_context
+    
     return state
 
 def profile_analysis_agent(state: AgentState) -> AgentState:
@@ -289,14 +304,20 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
         result = call_llm_api(messages)
         validated_result = _validate_response(result)
 
-        # Update unified context with new conversation and summary
+        # Update unified context with new conversation and summary - CRITICAL FIX
         updated_history = context["chat_history"] + [
             {"role": "user", "content": state["user_query"]},
             {"role": "assistant", "content": validated_result}
         ]
 
+        # Ensure the state's unified context is properly updated
         state["unified_context"]["chat_history"] = updated_history
         state["unified_context"]["conversation_summary"] = updated_summary
+        
+        # Re-extract key insights if profile data exists to keep them fresh
+        if state["unified_context"]["profile_data"]:
+            state["unified_context"]["key_insights"] = _extract_key_insights(state["unified_context"]["profile_data"])
+        
         state["analysis_result"] = validated_result
         return state
 
@@ -345,6 +366,7 @@ IMPORTANT GUIDELINES:
 - Don't always follow rigid templates - adapt to the conversation
 - Remember the key insights above throughout our conversation
 - Build on our previous conversations when relevant
+- Always refer to the user by their name if available in the profile data
 """
 
     # Specialized handling based on agent type and query complexity
