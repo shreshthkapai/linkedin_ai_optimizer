@@ -13,6 +13,19 @@ from prompts import (
 )
 from scraper import scrape_profile
 
+class UnifiedContext(TypedDict):
+    """
+    Unified context object that bundles all persistent session data.
+    
+    Combines profile data, conversation history, and user preferences
+    into a single coherent context to prevent information loss.
+    """
+    profile_data: Optional[dict]
+    chat_history: List[Dict[str, str]]
+    user_profile: str  # Formatted profile summary for LLM
+    key_insights: List[str]  # Important profile insights to remember
+    session_metadata: Dict[str, any]
+
 class AgentState(TypedDict):
     """
     State object that flows through the agent workflow.
@@ -21,13 +34,66 @@ class AgentState(TypedDict):
     maintaining conversation context across different agent types.
     """
     profile_url: str
-    profile_data: Optional[dict]
+    unified_context: UnifiedContext
     user_query: str
     job_role: Optional[str]
     analysis_result: Optional[str]
     session_id: str
-    chat_history: List[Dict[str, str]]
     next_node: Optional[str]
+
+def create_unified_context(profile_data: Optional[dict] = None, chat_history: List[Dict[str, str]] = None) -> UnifiedContext:
+    """
+    Create a new unified context object with all session data bundled together.
+    
+    Args:
+        profile_data: Raw LinkedIn profile data
+        chat_history: Previous conversation messages
+        
+    Returns:
+        Unified context object with formatted profile and key insights
+    """
+    context = UnifiedContext(
+        profile_data=profile_data or {},
+        chat_history=chat_history or [],
+        user_profile="",
+        key_insights=[],
+        session_metadata={}
+    )
+    
+    if profile_data:
+        context["user_profile"] = _format_profile_data(profile_data)
+        context["key_insights"] = _extract_key_insights(profile_data)
+    
+    return context
+
+def _extract_key_insights(profile_data: dict) -> List[str]:
+    """
+    Extract key insights from profile data for persistent memory.
+    
+    Args:
+        profile_data: Raw profile data dictionary
+        
+    Returns:
+        List of key insights to remember across conversations
+    """
+    insights = []
+    
+    if profile_data.get("headline"):
+        insights.append(f"Current role: {profile_data['headline']}")
+    
+    if profile_data.get("experience") and len(profile_data["experience"]) > 0:
+        recent_exp = profile_data["experience"][0]
+        if isinstance(recent_exp, dict):
+            title = recent_exp.get("title", "")
+            company = recent_exp.get("company", "")
+            if title and company:
+                insights.append(f"Latest position: {title} at {company}")
+    
+    if profile_data.get("skills"):
+        skills_count = len(profile_data["skills"]) if isinstance(profile_data["skills"], list) else 0
+        insights.append(f"Listed skills: {skills_count} total")
+    
+    return insights
 
 def truncate_chat_history(chat_history: List[Dict[str, str]], max_turns=15) -> List[Dict[str, str]]:
     """
@@ -101,11 +167,12 @@ def scrape_agent(state: AgentState) -> AgentState:
         state: Current agent state
         
     Returns:
-        Updated state with profile data
+        Updated state with unified context containing profile data
     """
-    if not state.get("profile_data"):
+    if not state["unified_context"]["profile_data"]:
         profile_data = scrape_profile(state["profile_url"])
-        state["profile_data"] = profile_data
+        if profile_data:
+            state["unified_context"] = create_unified_context(profile_data, state["unified_context"]["chat_history"])
     return state
 
 def profile_analysis_agent(state: AgentState) -> AgentState:
@@ -137,38 +204,39 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
         agent_type: Type identifier for specialized handling
         
     Returns:
-        Updated state with analysis results and chat history
+        Updated state with analysis results and unified context
     """
-    if not state.get("profile_data"):
+    context = state["unified_context"]
+    
+    if not context["profile_data"]:
         state["analysis_result"] = "Profile data missing. Cannot proceed."
         return state
 
     try:
-        profile_summary = _format_profile_data(state["profile_data"])
-        
-        # Create contextual prompt based on user query specificity
+        # Create contextual prompt with unified context
         contextual_prompt = _create_contextual_prompt(
             prompt_template, 
-            profile_summary, 
+            context["user_profile"], 
             state["user_query"], 
             state.get("job_role", ""),
-            agent_type
+            agent_type,
+            context["key_insights"]
         )
 
         system_msg = {"role": "system", "content": contextual_prompt}
-        history = truncate_chat_history(state.get("chat_history", []))
+        history = truncate_chat_history(context["chat_history"])
         messages = [system_msg] + history + [{"role": "user", "content": state["user_query"]}]
 
         result = call_llm_api(messages)
         validated_result = _validate_response(result)
 
-        # Update conversation history for context continuity
+        # Update unified context with new conversation
         updated_history = history + [
             {"role": "user", "content": state["user_query"]},
             {"role": "assistant", "content": validated_result}
         ]
 
-        state["chat_history"] = updated_history
+        state["unified_context"]["chat_history"] = updated_history
         state["analysis_result"] = validated_result
         return state
 
@@ -176,7 +244,7 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
         state["analysis_result"] = f"Error during AI processing: {str(e)}"
         return state
 
-def _create_contextual_prompt(prompt_template: str, profile_data: str, user_query: str, job_role: str, agent_type: str) -> str:
+def _create_contextual_prompt(prompt_template: str, profile_data: str, user_query: str, job_role: str, agent_type: str, key_insights: List[str]) -> str:
     """
     Generate context-aware prompts based on user query complexity and agent type.
     
@@ -189,6 +257,7 @@ def _create_contextual_prompt(prompt_template: str, profile_data: str, user_quer
         user_query: User's specific question
         job_role: Extracted job role if any
         agent_type: Agent specialization identifier
+        key_insights: Important profile insights to remember
         
     Returns:
         Contextually optimized prompt string
@@ -200,6 +269,9 @@ You are a helpful LinkedIn career advisor. Answer the user's question naturally 
 PROFILE DATA:
 {profile_data}
 
+KEY PROFILE INSIGHTS TO REMEMBER:
+{chr(10).join(f"• {insight}" for insight in key_insights)}
+
 IMPORTANT GUIDELINES:
 - Answer the user's specific question directly
 - Be conversational and natural, not overly structured
@@ -207,6 +279,7 @@ IMPORTANT GUIDELINES:
 - If they ask a simple question, give a simple answer
 - Use bullet points sparingly and only when truly helpful
 - Don't always follow rigid templates - adapt to the conversation
+- Remember the key insights above throughout our conversation
 """
 
     # Specialized handling based on agent type and query complexity
