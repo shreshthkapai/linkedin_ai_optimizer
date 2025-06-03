@@ -10,6 +10,7 @@ from prompts import (
     job_fit_prompt,
     content_enhancement_prompt,
     skill_gap_prompt,
+    conversation_summary_prompt,
 )
 from scraper import scrape_profile
 
@@ -22,6 +23,7 @@ class UnifiedContext(TypedDict):
     """
     profile_data: Optional[dict]
     chat_history: List[Dict[str, str]]
+    conversation_summary: str  # Intelligent summary of past conversations
     user_profile: str  # Formatted profile summary for LLM
     key_insights: List[str]  # Important profile insights to remember
     session_metadata: Dict[str, any]
@@ -55,6 +57,7 @@ def create_unified_context(profile_data: Optional[dict] = None, chat_history: Li
     context = UnifiedContext(
         profile_data=profile_data or {},
         chat_history=chat_history or [],
+        conversation_summary="",
         user_profile="",
         key_insights=[],
         session_metadata={}
@@ -95,20 +98,70 @@ def _extract_key_insights(profile_data: dict) -> List[str]:
     
     return insights
 
-def truncate_chat_history(chat_history: List[Dict[str, str]], max_turns=15) -> List[Dict[str, str]]:
+def manage_conversation_memory(chat_history: List[Dict[str, str]], current_summary: str = "", max_recent_turns: int = 8) -> tuple[List[Dict[str, str]], str]:
     """
-    Limit chat history to prevent context window overflow.
+    Intelligent memory management that summarizes old conversations while keeping recent ones.
+    
+    Instead of simple truncation, creates summaries of older conversations to preserve
+    important context while preventing token overflow. Maintains recent conversations
+    for immediate context continuity.
     
     Args:
-        chat_history: List of conversation messages
-        max_turns: Maximum number of conversation turns to keep
+        chat_history: Full conversation history
+        current_summary: Existing conversation summary
+        max_recent_turns: Number of recent conversation turns to keep in full
         
     Returns:
-        Truncated chat history maintaining recent context
+        Tuple of (recent_messages, updated_summary)
     """
-    if len(chat_history) <= max_turns * 2:
-        return chat_history
-    return chat_history[-max_turns * 2:]
+    if len(chat_history) <= max_recent_turns * 2:
+        return chat_history, current_summary
+    
+    # Split into messages to summarize and recent messages to keep
+    messages_to_summarize = chat_history[:-max_recent_turns * 2]
+    recent_messages = chat_history[-max_recent_turns * 2:]
+    
+    # Generate summary of older messages if they exist
+    if messages_to_summarize:
+        new_summary = _generate_conversation_summary(messages_to_summarize, current_summary)
+        return recent_messages, new_summary
+    
+    return recent_messages, current_summary
+
+def _generate_conversation_summary(messages: List[Dict[str, str]], existing_summary: str = "") -> str:
+    """
+    Generate intelligent summary of conversation history using LLM.
+    
+    Creates concise summaries that preserve important context including
+    user goals, previous advice given, and key discussion points.
+    
+    Args:
+        messages: Messages to summarize
+        existing_summary: Previous summary to build upon
+        
+    Returns:
+        Intelligent conversation summary
+    """
+    try:
+        # Format messages for summarization
+        conversation_text = ""
+        for msg in messages:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            conversation_text += f"{role}: {msg['content']}\n\n"
+        
+        summary_prompt = conversation_summary_prompt.format(
+            existing_summary=existing_summary,
+            conversation_text=conversation_text
+        )
+        
+        messages_for_api = [{"role": "system", "content": summary_prompt}]
+        summary = call_llm_api(messages_for_api)
+        
+        return summary if summary else existing_summary
+        
+    except Exception as e:
+        print(f"Summary generation error: {e}")
+        return existing_summary
 
 def call_llm_api(messages: List[Dict[str, str]]) -> str:
     """
@@ -213,6 +266,12 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
         return state
 
     try:
+        # Manage conversation memory with intelligent summarization
+        recent_history, updated_summary = manage_conversation_memory(
+            context["chat_history"], 
+            context["conversation_summary"]
+        )
+        
         # Create contextual prompt with unified context
         contextual_prompt = _create_contextual_prompt(
             prompt_template, 
@@ -220,23 +279,24 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
             state["user_query"], 
             state.get("job_role", ""),
             agent_type,
-            context["key_insights"]
+            context["key_insights"],
+            updated_summary
         )
 
         system_msg = {"role": "system", "content": contextual_prompt}
-        history = truncate_chat_history(context["chat_history"])
-        messages = [system_msg] + history + [{"role": "user", "content": state["user_query"]}]
+        messages = [system_msg] + recent_history + [{"role": "user", "content": state["user_query"]}]
 
         result = call_llm_api(messages)
         validated_result = _validate_response(result)
 
-        # Update unified context with new conversation
-        updated_history = history + [
+        # Update unified context with new conversation and summary
+        updated_history = context["chat_history"] + [
             {"role": "user", "content": state["user_query"]},
             {"role": "assistant", "content": validated_result}
         ]
 
         state["unified_context"]["chat_history"] = updated_history
+        state["unified_context"]["conversation_summary"] = updated_summary
         state["analysis_result"] = validated_result
         return state
 
@@ -244,7 +304,7 @@ def _run_agent_with_prompt(state: AgentState, prompt_template: str, agent_type: 
         state["analysis_result"] = f"Error during AI processing: {str(e)}"
         return state
 
-def _create_contextual_prompt(prompt_template: str, profile_data: str, user_query: str, job_role: str, agent_type: str, key_insights: List[str]) -> str:
+def _create_contextual_prompt(prompt_template: str, profile_data: str, user_query: str, job_role: str, agent_type: str, key_insights: List[str], conversation_summary: str = "") -> str:
     """
     Generate context-aware prompts based on user query complexity and agent type.
     
@@ -258,6 +318,7 @@ def _create_contextual_prompt(prompt_template: str, profile_data: str, user_quer
         job_role: Extracted job role if any
         agent_type: Agent specialization identifier
         key_insights: Important profile insights to remember
+        conversation_summary: Summary of previous conversations
         
     Returns:
         Contextually optimized prompt string
@@ -272,6 +333,9 @@ PROFILE DATA:
 KEY PROFILE INSIGHTS TO REMEMBER:
 {chr(10).join(f"• {insight}" for insight in key_insights)}
 
+PREVIOUS CONVERSATION SUMMARY:
+{conversation_summary if conversation_summary else "This is the start of our conversation."}
+
 IMPORTANT GUIDELINES:
 - Answer the user's specific question directly
 - Be conversational and natural, not overly structured
@@ -280,6 +344,7 @@ IMPORTANT GUIDELINES:
 - Use bullet points sparingly and only when truly helpful
 - Don't always follow rigid templates - adapt to the conversation
 - Remember the key insights above throughout our conversation
+- Build on our previous conversations when relevant
 """
 
     # Specialized handling based on agent type and query complexity
