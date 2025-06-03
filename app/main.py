@@ -13,6 +13,12 @@ try:
     os.environ['GEMINI_API_KEY'] = st.secrets.get('GEMINI_API_KEY', '')
     os.environ['APIFY_API_TOKEN'] = st.secrets.get('APIFY_API_TOKEN', '')
     os.environ['LI_AT_COOKIE'] = st.secrets.get('LI_AT_COOKIE', '')
+
+# After loading environment variables in main.py
+   st.write("Debug - GEMINI_API_KEY:", os.getenv('GEMINI_API_KEY'))
+   st.write("Debug - APIFY_API_TOKEN:", os.getenv('APIFY_API_TOKEN'))
+   st.write("Debug - LI_AT_COOKIE:", os.getenv('LI_AT_COOKIE'))
+   st.write("Debug - HUGGING_FACE_API_KEY:", os.getenv('HUGGING_FACE_API_KEY'))
        
 except Exception:
     # Fallback to environment variables (local development)
