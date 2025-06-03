@@ -112,13 +112,14 @@ class ChatHandler:
             print(f"Processing query: {user_query[:50]}...")
             result = self.workflow.invoke(state, config=config)
 
-            # Update unified context with workflow results
+            # CRITICAL FIX: Always update unified context with workflow results
             if isinstance(result, dict) and result.get("unified_context"):
+                # Save the updated context back to session store
                 self.unified_contexts[session_id] = result["unified_context"]
+                print(f"Updated context - Chat history length: {len(result['unified_context']['chat_history'])}")
+                print(f"Key insights count: {len(result['unified_context']['key_insights'])}")
 
-                response = result.get("analysis_result", "No response generated")
-            else:
-                response = "Error: Unexpected response format"
+            response = result.get("analysis_result", "No response generated") if isinstance(result, dict) else "Error: Unexpected response format"
 
             print(f"Generated response length: {len(str(response))}")
             return self._clean_response(response)
@@ -200,3 +201,37 @@ class ChatHandler:
         """
         if session_id in self.unified_contexts:
             del self.unified_contexts[session_id]
+
+    def get_session_context(self, session_id: str) -> dict:
+        """
+        Get current session context for debugging and monitoring.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Current unified context or empty dict if session doesn't exist
+        """
+        return self.unified_contexts.get(session_id, {})
+    
+    def debug_session_state(self, session_id: str):
+        """
+        Print debug information about current session state.
+        
+        Args:
+            session_id: Session identifier to debug
+        """
+        if session_id in self.unified_contexts:
+            context = self.unified_contexts[session_id]
+            print(f"=== DEBUG SESSION {session_id} ===")
+            print(f"Profile loaded: {'Yes' if context.get('profile_data') else 'No'}")
+            print(f"Chat history entries: {len(context.get('chat_history', []))}")
+            print(f"Key insights: {len(context.get('key_insights', []))}")
+            print(f"Has conversation summary: {'Yes' if context.get('conversation_summary') else 'No'}")
+            if context.get('key_insights'):
+                print("Key insights preview:")
+                for insight in context['key_insights'][:3]:
+                    print(f"  - {insight}")
+            print("=" * 30)
+        else:
+            print(f"Session {session_id} not found")
